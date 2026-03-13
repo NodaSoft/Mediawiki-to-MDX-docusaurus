@@ -52,6 +52,12 @@ type Converter struct {
 	downloader *Downloader
 }
 
+// Redirect represents a page redirect
+type Redirect struct {
+	From string
+	To   string
+}
+
 // Stats holds conversion statistics
 type Stats struct {
 	TotalArticles        int
@@ -60,6 +66,7 @@ type Stats struct {
 	Failed               int
 	ImagesDownloaded     int
 	ImagesDownloadFailed int
+	Redirects            []Redirect
 }
 
 // NewConverter creates a new converter instance
@@ -106,23 +113,46 @@ func (c *Converter) Convert() (*Stats, error) {
 		log.Printf("Found %d pages to convert", stats.TotalArticles)
 	}
 
+	for _, page := range pages {
+		// Handle redirects
+		if page.IsRedirect {
+			redirectTarget := extractRedirectTarget(page.Content)
+			if redirectTarget != "" {
+				stats.Redirects = append(stats.Redirects, Redirect{
+					From: page.Title,
+					To:   redirectTarget,
+				})
+				if c.config.Verbose {
+					log.Printf("  Redirect: %s -> %s", page.Title, redirectTarget)
+				}
+			} else {
+				if c.config.Verbose {
+					log.Printf("  Skipping redirect (no target found): %s", page.Title)
+				}
+			}
+		}
+	}
+
 	// Convert each page
 	for i, page := range pages {
+		//if page.Title != "TS.ABCP.printforms.vars" {
+		//	continue
+		//}
+		if strings.HasSuffix(page.Title, "EN") || strings.HasSuffix(page.Title, "en") {
+			continue
+		}
 		if c.config.Verbose {
 			log.Printf("[%d/%d] Processing: %s", i+1, stats.TotalArticles, page.Title)
 		}
 
-		// Skip redirects
+		// Handle redirects
 		if page.IsRedirect {
-			if c.config.Verbose {
-				log.Printf("  Skipping redirect: %s", page.Title)
-			}
 			stats.Skipped++
 			continue
 		}
 
 		// Convert page
-		mdxContent := c.convertPage(page)
+		mdxContent := c.convertPage(page, stats.Redirects)
 
 		// Save page
 		if err = c.savePage(page, mdxContent); err != nil {
@@ -147,7 +177,8 @@ func (c *Converter) Convert() (*Stats, error) {
 }
 
 // convertPage converts a single page to Docusaurus format
-func (c *Converter) convertPage(page WikiPage) string {
+func (c *Converter) convertPage(page WikiPage, redirects []Redirect) string {
+	c.parser.SetRedirects(redirects)
 	// Parse wiki markup to markdown
 	markdown := c.parser.Parse(page.Content)
 
@@ -218,11 +249,24 @@ func transliterateCyrillic(s string) string {
 // generateID creates a valid Docusaurus ID from a title by converting to lowercase,
 // transliterating Cyrillic characters, and removing special characters
 func (c *Converter) generateID(title string) string {
-	id := strings.ToLower(title)
+	actualTitle := title
+	if strings.Contains(title, ":") { // Handle namespace prefixes in title
+		parts := strings.SplitN(title, ":", 2)
+		actualTitle = parts[1]
+	}
+	id := strings.ToLower(actualTitle)
+	id = strings.TrimSpace(id)
 	// Transliterate Cyrillic to Latin
 	id = transliterateCyrillic(id)
+	// Replace spaces, underscores, slashes, colons, periods, and double hyphens with hyphens
 	id = strings.ReplaceAll(id, " ", "-")
+	id = strings.ReplaceAll(id, "_", "-")
 	id = strings.ReplaceAll(id, "/", "-")
+	id = strings.ReplaceAll(id, ":", "-")
+	id = strings.ReplaceAll(id, ".", "-")
+	id = strings.ReplaceAll(id, "--", "-")
+	id = strings.TrimSpace(id)
+	id = strings.Trim(id, "-")
 	// Remove special characters
 	id = strings.Map(func(r rune) rune {
 		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
@@ -237,34 +281,68 @@ func (c *Converter) generateID(title string) string {
 // generateFilename creates a filename from a title and namespace,
 // organizing files into subdirectories based on namespace
 func (c *Converter) generateFilename(title string, namespace int) string {
-	// Create subdirectory based on namespace
+	// Handle namespace prefixes in title (e.g., "Help:Getting Started")
+	// This takes precedence over the numeric namespace parameter
 	var subdir string
-	switch namespace {
-	case 0:
-		subdir = "" // Main namespace
-	case 1:
-		subdir = "talk"
-	case 2:
-		subdir = "user"
-	case 4:
-		subdir = "project"
-	case 6:
-		subdir = "file"
-	case 8:
-		subdir = "mediawiki"
-	case 10:
-		subdir = "template"
-	case 12:
-		subdir = "help"
-	case 14:
-		subdir = "category"
-	default:
-		subdir = fmt.Sprintf("ns-%d", namespace)
+
+	if strings.Contains(title, ":") {
+		parts := strings.SplitN(title, ":", 2)
+		namespacePrefix := strings.ToLower(strings.TrimSpace(parts[0]))
+
+		// Map namespace prefixes to subdirectories (matching convertInternalLinkTarget)
+		switch namespacePrefix {
+		case "category":
+			subdir = "category"
+		case "file", "image":
+			subdir = "file"
+		case "help":
+			subdir = "help"
+		case "template":
+			subdir = "template"
+		case "user":
+			subdir = "user"
+		case "project":
+			subdir = "project"
+		case "talk":
+			subdir = "talk"
+		default:
+			// Unknown namespace prefix, use it as-is
+			subdir = namespacePrefix
+		}
+	} else {
+		// Fall back to numeric namespace if no prefix in title
+		switch namespace {
+		case 0:
+			subdir = "" // Main namespace
+		case 1:
+			subdir = "talk"
+		case 2:
+			subdir = "user"
+		case 4:
+			subdir = "project"
+		case 6:
+			subdir = "file"
+		case 8:
+			subdir = "mediawiki"
+		case 10:
+			subdir = "template"
+		case 12:
+			subdir = "help"
+		case 14:
+			subdir = "category"
+		default:
+			subdir = fmt.Sprintf("ns-%d", namespace)
+		}
 	}
 
 	filename := c.generateID(title) + ".md"
 
 	if subdir != "" {
+		// Create subdirectory if it doesn't exist
+		subdirPath := filepath.Join(c.config.OutputDir, subdir)
+		if err := os.MkdirAll(subdirPath, dirPermissions); err != nil {
+			log.Printf("Warning: failed to create subdirectory %s: %v", subdirPath, err)
+		}
 		return filepath.Join(subdir, filename)
 	}
 	return filename
@@ -305,4 +383,33 @@ func (c *Converter) extractDescription(markdown string) string {
 // stripHTMLTags removes HTML tags from a string
 func stripHTMLTags(s string) string {
 	return regexp.MustCompile(`<[^>]+>`).ReplaceAllString(s, "")
+}
+
+// extractRedirectTarget extracts the target page from a MediaWiki redirect
+// MediaWiki redirects have the format: #REDIRECT [[Target Page]]
+func extractRedirectTarget(content string) string {
+	// Match various redirect formats
+	// #REDIRECT [[Page]]
+	// #redirect [[Page]]
+	// #перенаправление [[Page]] (Russian)
+	redirectPattern := regexp.MustCompile(`(?i)^#(?:redirect|перенаправление)\s*\[\[([^\]]+)\]\]`)
+
+	lines := strings.Split(content, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if matches := redirectPattern.FindStringSubmatch(line); matches != nil {
+			target := strings.TrimSpace(matches[1])
+			// Remove any anchor/section references
+			if idx := strings.Index(target, "#"); idx != -1 {
+				target = target[:idx]
+			}
+			// Remove any pipe-separated display text
+			if idx := strings.Index(target, "|"); idx != -1 {
+				target = target[:idx]
+			}
+			return strings.TrimSpace(target)
+		}
+	}
+
+	return ""
 }

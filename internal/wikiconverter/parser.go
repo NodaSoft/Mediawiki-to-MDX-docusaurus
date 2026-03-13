@@ -20,7 +20,12 @@ type WikiParser struct {
 	// Base URL for images (if provided)
 	imageBaseURL string
 	fileBaseURL  string
+	redirects    []Redirect
 	assets       []string
+}
+
+func (p *WikiParser) SetRedirects(redirects []Redirect) {
+	p.redirects = redirects
 }
 
 // NewWikiParser creates a new wiki parser
@@ -115,14 +120,14 @@ func (p *WikiParser) Parse(wikitext string) string {
 	// Convert images (before links to avoid conflicts)
 	text = p.convertAssets(text)
 
-	// Convert MediaWiki tables
-	text = p.convertTables(text)
-
 	// Convert external links
 	text = p.patterns["extLink"].ReplaceAllString(text, "[$2]($1)")
 
 	// Convert internal links
 	text = p.convertInternalLink(text)
+
+	// Convert MediaWiki tables
+	text = p.convertTables(text)
 
 	// Convert HTML tables
 	text = p.convertHTMLTables(text)
@@ -335,6 +340,13 @@ func (p *WikiParser) convertInternalLink(text string) string {
 			if len(matches) >= 3 && matches[2] != "" {
 				label = matches[2]
 			}
+			if strings.HasPrefix(target, "Категория") || strings.HasPrefix(target, "Category") {
+				return "" // Skip categories links
+			}
+
+			// Resolve redirects (including chains)
+			target = p.resolveRedirect(target)
+
 			// Convert to relative link
 			link := p.convertInternalLinkTarget(target)
 			label = strings.ReplaceAll(label, "|", "")
@@ -349,6 +361,43 @@ func (p *WikiParser) convertInternalLink(text string) string {
 	})
 
 	return strings.TrimSpace(text)
+}
+
+// resolveRedirect resolves a page name through redirect chains
+// Returns the final target page after following all redirects
+func (p *WikiParser) resolveRedirect(pageName string) string {
+	if len(p.redirects) == 0 {
+		return pageName
+	}
+
+	visited := make(map[string]bool)
+	current := strings.TrimSpace(pageName)
+
+	// Follow redirect chain, protecting against infinite loops
+	for {
+		// Check if we've already visited this page (circular redirect)
+		if visited[current] {
+			// Circular redirect detected, return current to avoid infinite loop
+			return current
+		}
+
+		visited[current] = true
+
+		// Look for a redirect from current page
+		found := false
+		for _, redirect := range p.redirects {
+			if strings.EqualFold(strings.TrimSpace(redirect.From), current) {
+				current = strings.TrimSpace(redirect.To)
+				found = true
+				break
+			}
+		}
+
+		// No more redirects found, we've reached the final target
+		if !found {
+			return current
+		}
+	}
 }
 
 // codeifyNonHTMLTags wraps non-HTML tags in inline code blocks
@@ -855,11 +904,10 @@ func (p *WikiParser) convertInternalLinkTarget(target string) string {
 		parts := strings.SplitN(target, ":", 2)
 		namespace := strings.ToLower(parts[0])
 		target = parts[1]
+		target = strings.Trim(target, ":")
 
 		// Map common namespaces to paths
 		switch namespace {
-		case "category":
-			prefix = "/category/"
 		case "file", "image":
 			filename := normalizeAssetName(target)
 			if filename == "" {
@@ -869,19 +917,9 @@ func (p *WikiParser) convertInternalLinkTarget(target string) string {
 				return strings.TrimRight(p.imageBaseURL, "/") + "/" + filename + anchor
 			}
 			return strings.TrimRight(p.fileBaseURL, "/") + "/" + filename + anchor
-		case "help":
-			prefix = "/help/"
-		case "template":
-			prefix = "/template/"
-		case "user":
-			prefix = "/user/"
-		case "project":
-			prefix = "/project/"
-		case "talk":
-			prefix = "/talk/"
 		default:
 			// Unknown namespace, keep as-is
-			prefix = "/" + namespace + "/"
+			prefix = namespace + "/"
 		}
 	}
 
@@ -891,6 +929,12 @@ func (p *WikiParser) convertInternalLinkTarget(target string) string {
 	slug = transliterateCyrillic(slug)
 	slug = strings.ReplaceAll(slug, " ", "-")
 	slug = strings.ReplaceAll(slug, "_", "-")
+	slug = strings.ReplaceAll(slug, "/", "-")
+	slug = strings.ReplaceAll(slug, ":", "-")
+	slug = strings.ReplaceAll(slug, ".", "-")
+	slug = strings.ReplaceAll(slug, "--", "-")
+	slug = strings.TrimSpace(slug)
+	slug = strings.Trim(slug, "-")
 
 	// Remove special characters except hyphens
 	slug = strings.Map(func(r rune) rune {
