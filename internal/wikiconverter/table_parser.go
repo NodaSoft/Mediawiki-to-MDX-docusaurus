@@ -99,7 +99,7 @@ func splitInlineTableBlock(line string) ([]string, bool) {
 		return []string{"{|", "|}"}, true
 	}
 
-	segments := strings.Split(body, "|-")
+	segments := splitTableRowsIgnoringBackticks(body)
 	out := []string{"{|"}
 	for idx, segment := range segments {
 		segment = strings.TrimSpace(segment)
@@ -129,6 +129,40 @@ func splitInlineTableBlock(line string) ([]string, bool) {
 
 	out = append(out, "|}")
 	return out, true
+}
+
+// splitTableRowsIgnoringBackticks splits table body by "|-" delimiter
+// while ignoring any "|-" that appears within backticks (code blocks)
+func splitTableRowsIgnoringBackticks(body string) []string {
+	var segments []string
+	var currentSegment strings.Builder
+	inBackticks := false
+
+	for i := 0; i < len(body); i++ {
+		if body[i] == '`' {
+			inBackticks = !inBackticks
+			currentSegment.WriteByte(body[i])
+			continue
+		}
+
+		// Check for "|-" delimiter only if not inside backticks
+		if !inBackticks && i+1 < len(body) && body[i] == '|' && body[i+1] == '-' {
+			// Found a row delimiter outside of backticks
+			segments = append(segments, currentSegment.String())
+			currentSegment.Reset()
+			i++ // Skip the '-' character
+			continue
+		}
+
+		currentSegment.WriteByte(body[i])
+	}
+
+	// Add the last segment
+	if currentSegment.Len() > 0 {
+		segments = append(segments, currentSegment.String())
+	}
+
+	return segments
 }
 
 // firstInlineRowStart finds the position where the first table row starts
@@ -215,23 +249,68 @@ func convertSingleTable(input string) string {
 
 // splitCells splits a table row into cells and removes MediaWiki attributes
 func splitCells(line, sep string) []string {
-	parts := strings.Split(line, sep)
+	parts := splitCellsIgnoringBackticks(line, sep)
 	for i := range parts {
 		cell := strings.TrimSpace(parts[i])
 
 		// Remove attribute prefixes like: style="..." | Value
-		if strings.Contains(cell, "|") {
-			re := regexp.MustCompile(`^.*?\|\s*`)
-			cell = re.ReplaceAllString(cell, "")
+		// But only if the pipe is not inside backticks
+		if pipeIdx := findFirstPipeOutsideBackticks(cell); pipeIdx != -1 {
+			cell = strings.TrimSpace(cell[pipeIdx+1:])
 		} else if tableAttrOnlyPattern.MatchString(cell) {
 			// Attribute-only cell, no visible content.
 			cell = ""
 		}
 
-		// Escape pipe characters in cell content for Markdown
+		// Escape ALL pipe characters in cell content for Markdown
 		cell = strings.ReplaceAll(cell, "|", `\|`)
 
 		parts[i] = cell
 	}
 	return parts
+}
+
+// splitCellsIgnoringBackticks splits a line by separator while ignoring separators inside backticks
+func splitCellsIgnoringBackticks(line, sep string) []string {
+	var parts []string
+	var currentPart strings.Builder
+	inBackticks := false
+	sepLen := len(sep)
+
+	for i := 0; i < len(line); i++ {
+		if line[i] == '`' {
+			inBackticks = !inBackticks
+			currentPart.WriteByte(line[i])
+			continue
+		}
+
+		// Check for separator only if not inside backticks
+		if !inBackticks && i+sepLen <= len(line) && line[i:i+sepLen] == sep {
+			parts = append(parts, currentPart.String())
+			currentPart.Reset()
+			i += sepLen - 1 // Skip the separator (minus 1 because loop will increment)
+			continue
+		}
+
+		currentPart.WriteByte(line[i])
+	}
+
+	// Add the last part
+	parts = append(parts, currentPart.String())
+	return parts
+}
+
+// findFirstPipeOutsideBackticks finds the first pipe character that's not inside backticks
+func findFirstPipeOutsideBackticks(text string) int {
+	inBackticks := false
+	for i := 0; i < len(text); i++ {
+		if text[i] == '`' {
+			inBackticks = !inBackticks
+			continue
+		}
+		if !inBackticks && text[i] == '|' {
+			return i
+		}
+	}
+	return -1
 }
