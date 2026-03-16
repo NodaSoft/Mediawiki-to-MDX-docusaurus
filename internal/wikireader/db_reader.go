@@ -1,4 +1,4 @@
-package wikiconverter
+package wikireader
 
 import (
 	"database/sql"
@@ -6,26 +6,18 @@ import (
 	"log"
 	"regexp"
 	"strings"
+
+	"github.com/nodasoft/Mediawiki-to-MDX-docusaurus/internal/config"
 )
 
-// WikiPage represents a MediaWiki page
-type WikiPage struct {
-	ID         int
-	Namespace  int
-	Title      string
-	Content    string
-	Timestamp  string
-	IsRedirect bool
-}
-
-// WikiReader reads pages from a MediaWiki database
-type WikiReader struct {
+// WikiDBReader reads pages from a MediaWiki database
+type WikiDBReader struct {
 	db     *sql.DB
-	config Config
+	config config.Config
 }
 
-// NewWikiReader creates a new WikiReader and connects to the database
-func NewWikiReader(config Config) (*WikiReader, error) {
+// NewWikiDBReader creates a new WikiDBReader and connects to the database
+func NewWikiDBReader(config config.Config) (*WikiDBReader, error) {
 	if !isValidTablePrefix(config.TablePrefix) {
 		return nil, fmt.Errorf("invalid table prefix %q: only letters, numbers, and underscore are allowed", config.TablePrefix)
 	}
@@ -50,19 +42,19 @@ func NewWikiReader(config Config) (*WikiReader, error) {
 			config.DBUser, config.DBHost, config.DBPort, config.DBName)
 	}
 
-	return &WikiReader{
+	return &WikiDBReader{
 		db:     db,
 		config: config,
 	}, nil
 }
 
 // tableName returns the full table name with prefix
-func (c *WikiReader) tableName(name string) string {
+func (c *WikiDBReader) tableName(name string) string {
 	return c.config.TablePrefix + name
 }
 
 // FetchPages retrieves pages from MediaWiki database
-func (c *WikiReader) FetchPages() ([]WikiPage, error) {
+func (c *WikiDBReader) FetchPages() ([]WikiPage, error) {
 	query := `
 		SELECT
 			p.page_id,
@@ -123,7 +115,7 @@ func (c *WikiReader) FetchPages() ([]WikiPage, error) {
 }
 
 // Close closes the database connection
-func (c *WikiReader) Close() error {
+func (c *WikiDBReader) Close() error {
 	if c.db != nil {
 		return c.db.Close()
 	}
