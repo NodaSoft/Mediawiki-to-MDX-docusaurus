@@ -11,40 +11,61 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
+
+	"github.com/nodasoft/Mediawiki-to-MDX-docusaurus/internal/config"
+)
+
+const (
+	// HTTP client timeout
+	httpClientTimeout     = 30 * time.Second
+	defaultImageAssetsDir = "./static/img"
+	defaultFileAssetsDir  = "./static/files"
 )
 
 // Downloader handles downloading assets from MediaWiki
 type Downloader struct {
-	config Config
+	assetBaseURL   string // Base URL for assets (e.g., https://wiki.example.com/images)
+	imageAssetsDir string // Directory for downloaded images
+	fileAssetsDir  string // Directory for downloaded files
+	verbose        bool   // Verbose output
 }
 
 // NewDownloader creates a new asset downloader
-func NewDownloader(config Config) *Downloader {
-	if config.DownloadAssets && config.ImageAssetsDir == "" {
-		config.ImageAssetsDir = "./static/img"
+func NewDownloader(config config.Config) *Downloader {
+	downloader := &Downloader{
+		assetBaseURL:   config.AssetBaseURL,
+		imageAssetsDir: config.ImageAssetsDir,
+		fileAssetsDir:  config.FileAssetsDir,
+		verbose:        config.Verbose,
 	}
-	if config.DownloadAssets && config.FileAssetsDir == "" {
-		config.FileAssetsDir = "./static/files"
+
+	if config.DownloadAssets && downloader.imageAssetsDir == "" {
+		downloader.imageAssetsDir = defaultImageAssetsDir
 	}
-	return &Downloader{
-		config: config,
+
+	if config.DownloadAssets && downloader.fileAssetsDir == "" {
+		downloader.fileAssetsDir = defaultFileAssetsDir
 	}
+
+	return downloader
 }
 
 // downloadAssets downloads all assets (images and files) from the MediaWiki server
 // Returns the number of successfully downloaded assets, failed downloads, and any error
 func (d *Downloader) downloadAssets(assets map[string]struct{}) (int, int, error) {
-	if d.config.AssetBaseURL == "" {
+	if d.assetBaseURL == "" {
 		return 0, 0, fmt.Errorf("asset-url is required when download-assets is enabled")
 	}
 	if len(assets) == 0 {
 		return 0, 0, nil
 	}
 
-	if err := os.MkdirAll(d.config.ImageAssetsDir, dirPermissions); err != nil {
+	if err := os.MkdirAll(d.imageAssetsDir, dirPermissions); err != nil {
 		return 0, 0, fmt.Errorf("failed to create image assets directory: %w", err)
 	}
-	if err := os.MkdirAll(d.config.FileAssetsDir, dirPermissions); err != nil {
+
+	if err := os.MkdirAll(d.fileAssetsDir, dirPermissions); err != nil {
 		return 0, 0, fmt.Errorf("failed to create file assets directory: %w", err)
 	}
 
@@ -56,7 +77,7 @@ func (d *Downloader) downloadAssets(assets map[string]struct{}) (int, int, error
 		saved, err := d.downloadAsset(client, assetName)
 		if err != nil {
 			failed++
-			if d.config.Verbose {
+			if d.verbose {
 				log.Printf("  ✗ Failed asset %s: %v", assetName, err)
 			}
 			continue
@@ -74,13 +95,13 @@ func (d *Downloader) downloadAssets(assets map[string]struct{}) (int, int, error
 func (d *Downloader) downloadAsset(client *http.Client, assetName string) (bool, error) {
 	targetPath := d.targetAssetPath(assetName)
 	if _, err := os.Stat(targetPath); err == nil {
-		if d.config.Verbose {
+		if d.verbose {
 			log.Printf("  - Asset exists, skip: %s", assetName)
 		}
 		return false, nil
 	}
 
-	candidates := buildMediaWikiImageCandidates(d.config.AssetBaseURL, assetName)
+	candidates := buildMediaWikiImageCandidates(d.assetBaseURL, assetName)
 	if len(candidates) == 0 {
 		return false, fmt.Errorf("no download URL candidates for %s", assetName)
 	}
@@ -102,7 +123,7 @@ func (d *Downloader) downloadAsset(client *http.Client, assetName string) (bool,
 		}
 		_ = resp.Body.Close()
 
-		if d.config.Verbose {
+		if d.verbose {
 			log.Printf("  ✓ Downloaded asset: %s", assetName)
 		}
 
@@ -115,9 +136,9 @@ func (d *Downloader) downloadAsset(client *http.Client, assetName string) (bool,
 // targetAssetPath returns the local filesystem path for an asset
 func (d *Downloader) targetAssetPath(filename string) string {
 	if isImageAsset(filename) {
-		return filepath.Join(d.config.ImageAssetsDir, filename)
+		return filepath.Join(d.imageAssetsDir, filename)
 	}
-	return filepath.Join(d.config.FileAssetsDir, filename)
+	return filepath.Join(d.fileAssetsDir, filename)
 }
 
 // buildMediaWikiImageCandidates generates possible URLs for a MediaWiki image
