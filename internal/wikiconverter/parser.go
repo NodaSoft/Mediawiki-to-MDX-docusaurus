@@ -124,7 +124,7 @@ func (p *WikiParser) Parse(wikitext string) string {
 	text = p.convertAssets(text)
 
 	// Convert external links
-	text = p.patterns["extLink"].ReplaceAllString(text, "[$2]($1)")
+	text = p.convertExternalLink(text)
 
 	// Convert internal links
 	text = p.convertInternalLink(text)
@@ -333,6 +333,32 @@ func (p *WikiParser) convertSimpleHTML(text string) string {
 	return text
 }
 
+func cleanLinkLabel(label string) string {
+	label = strings.TrimSpace(label)
+	label = strings.ReplaceAll(label, "|", "")
+	label = strings.ReplaceAll(label, ">", "")
+	label = strings.ReplaceAll(label, "<", "")
+	label = strings.ReplaceAll(label, "-", "")
+	label = strings.ReplaceAll(label, "/", "")
+	label = strings.TrimSpace(label)
+
+	return label
+}
+
+func (p *WikiParser) convertExternalLink(text string) string {
+	text = p.patterns["extLink"].ReplaceAllStringFunc(text, func(match string) string {
+		matches := p.patterns["extLink"].FindStringSubmatch(match)
+		if len(matches) >= 3 {
+			url := matches[1]
+			label := cleanLinkLabel(matches[2])
+			return "[" + label + "](" + url + ")"
+		}
+		return match
+	})
+
+	return text
+}
+
 // convertInternalLink converts MediaWiki internal links to Markdown links
 func (p *WikiParser) convertInternalLink(text string) string {
 	text = p.patterns["intLink"].ReplaceAllStringFunc(text, func(match string) string {
@@ -352,12 +378,7 @@ func (p *WikiParser) convertInternalLink(text string) string {
 
 			// Convert to relative link
 			link := p.convertInternalLinkTarget(target)
-			label = strings.ReplaceAll(label, "|", "")
-			label = strings.ReplaceAll(label, ">", "")
-			label = strings.ReplaceAll(label, "<", "")
-			label = strings.ReplaceAll(label, "-", "")
-			label = strings.ReplaceAll(label, "/", "")
-			label = strings.TrimSpace(label)
+			label = cleanLinkLabel(label)
 			return "[" + label + "](" + link + ")"
 		}
 		return match
