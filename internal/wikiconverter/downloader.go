@@ -12,8 +12,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/nodasoft/Mediawiki-to-MDX-docusaurus/internal/config"
 )
 
 const (
@@ -32,7 +30,7 @@ type Downloader struct {
 }
 
 // NewDownloader creates a new asset downloader
-func NewDownloader(config config.Config) *Downloader {
+func NewDownloader(config Config) *Downloader {
 	downloader := &Downloader{
 		assetBaseURL:   config.AssetBaseURL,
 		imageAssetsDir: config.ImageAssetsDir,

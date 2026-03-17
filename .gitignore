@@ -40,3 +40,6 @@ build/
 # Temporary files
 tmp/
 temp/
+/redirects.yaml
+/cmd/converter/*.env
+/cmd/redirect/*.env

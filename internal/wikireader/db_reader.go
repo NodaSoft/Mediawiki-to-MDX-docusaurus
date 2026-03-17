@@ -6,18 +6,27 @@ import (
 	"log"
 	"regexp"
 	"strings"
-
-	"github.com/nodasoft/Mediawiki-to-MDX-docusaurus/internal/config"
 )
 
 // WikiDBReader reads pages from a MediaWiki database
 type WikiDBReader struct {
-	db     *sql.DB
-	config config.Config
+	db          *sql.DB
+	tablePrefix string
+	namespace   string
+}
+
+type DBConfig struct {
+	DBHost      string
+	DBPort      string
+	DBUser      string
+	DBPass      string
+	DBName      string
+	TablePrefix string
+	Verbose     bool
 }
 
 // NewWikiDBReader creates a new WikiDBReader and connects to the database
-func NewWikiDBReader(config config.Config) (*WikiDBReader, error) {
+func NewWikiDBReader(config DBConfig, namespace string) (*WikiDBReader, error) {
 	if !isValidTablePrefix(config.TablePrefix) {
 		return nil, fmt.Errorf("invalid table prefix %q: only letters, numbers, and underscore are allowed", config.TablePrefix)
 	}
@@ -43,18 +52,19 @@ func NewWikiDBReader(config config.Config) (*WikiDBReader, error) {
 	}
 
 	return &WikiDBReader{
-		db:     db,
-		config: config,
+		db:          db,
+		tablePrefix: config.TablePrefix,
+		namespace:   namespace,
 	}, nil
 }
 
 // tableName returns the full table name with prefix
-func (c *WikiDBReader) tableName(name string) string {
-	return c.config.TablePrefix + name
+func (r *WikiDBReader) tableName(name string) string {
+	return r.tablePrefix + name
 }
 
 // FetchPages retrieves pages from MediaWiki database
-func (c *WikiDBReader) FetchPages() ([]WikiPage, error) {
+func (r *WikiDBReader) FetchPages() ([]WikiPage, error) {
 	query := `
 		SELECT
 			p.page_id,
@@ -63,25 +73,25 @@ func (c *WikiDBReader) FetchPages() ([]WikiPage, error) {
 			p.page_is_redirect,
 			COALESCE(t.old_text, '') AS old_text,
 			r.rev_timestamp
-		FROM ` + c.tableName("page") + ` p
-		JOIN ` + c.tableName("revision") + ` r ON p.page_latest = r.rev_id
-		JOIN ` + c.tableName("slots") + ` s ON r.rev_id = s.slot_revision_id
-		JOIN ` + c.tableName("content") + ` c ON s.slot_content_id = c.content_id
-		LEFT JOIN ` + c.tableName("text") + ` t ON t.old_id = CAST(SUBSTRING(c.content_address, 4) AS UNSIGNED)
+		FROM ` + r.tableName("page") + ` p
+		JOIN ` + r.tableName("revision") + ` r ON p.page_latest = r.rev_id
+		JOIN ` + r.tableName("slots") + ` s ON r.rev_id = s.slot_revision_id
+		JOIN ` + r.tableName("content") + ` c ON s.slot_content_id = c.content_id
+		LEFT JOIN ` + r.tableName("text") + ` t ON t.old_id = CAST(SUBSTRING(c.content_address, 4) AS UNSIGNED)
 		WHERE s.slot_role_id = 1 AND c.content_address LIKE 'tt:%'
 	`
 
 	args := []interface{}{}
 
 	// Filter by namespace if specified
-	if c.config.Namespace != "" {
+	if r.namespace != "" {
 		query += " AND p.page_namespace = ?"
-		args = append(args, c.config.Namespace)
+		args = append(args, r.namespace)
 	}
 
 	query += " ORDER BY p.page_namespace, p.page_title"
 
-	rows, err := c.db.Query(query, args...)
+	rows, err := r.db.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
@@ -115,9 +125,9 @@ func (c *WikiDBReader) FetchPages() ([]WikiPage, error) {
 }
 
 // Close closes the database connection
-func (c *WikiDBReader) Close() error {
-	if c.db != nil {
-		return c.db.Close()
+func (r *WikiDBReader) Close() error {
+	if r.db != nil {
+		return r.db.Close()
 	}
 	return nil
 }

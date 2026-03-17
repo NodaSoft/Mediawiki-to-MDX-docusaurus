@@ -3,10 +3,8 @@ package wikiconverter
 import (
 	"fmt"
 	"html"
-	"path/filepath"
 	"regexp"
 	"strings"
-	"unicode"
 )
 
 const imagesBaseURL = "/img/"
@@ -113,6 +111,9 @@ func NewWikiParserWithImageURL(imageBaseURL string, fileBaseURL string) *WikiPar
 // Parse converts MediaWiki markup to Markdown
 func (p *WikiParser) Parse(wikitext string) string {
 	text := wikitext
+
+	// Convert magic words first
+	text = p.convertMagicWords(text)
 
 	// Convert lists
 	text = p.convertLists(text)
@@ -297,6 +298,7 @@ func (p *WikiParser) convertSimpleHTML(text string) string {
 		for i, line := range lines {
 			lines[i] = "> " + strings.TrimSpace(line)
 		}
+
 		return "\n" + strings.Join(lines, "\n") + "\n"
 	})
 
@@ -305,17 +307,50 @@ func (p *WikiParser) convertSimpleHTML(text string) string {
 		matches := p.patterns["template"].FindStringSubmatch(match)
 		if len(matches) >= 2 {
 			content := strings.TrimSpace(matches[1])
-			// Check for common templates
-			if strings.HasPrefix(strings.ToLower(content), "note") ||
-				strings.HasPrefix(strings.ToLower(content), "warning") ||
-				strings.HasPrefix(strings.ToLower(content), "info") {
-				parts := strings.SplitN(content, "|", 2)
+
+			// Split template name and parameters
+			parts := strings.SplitN(content, "|", 2)
+			templateName := strings.ToLower(strings.TrimSpace(parts[0]))
+
+			// Handle title template
+			if templateName == "title" {
 				if len(parts) >= 2 {
-					return ":::note\n" + strings.TrimSpace(parts[1]) + "\n:::"
+					titleText := strings.TrimSpace(parts[1])
+					// Convert to heading
+					return "# " + titleText + "\n"
+				}
+				return ""
+			}
+
+			// Handle admonition templates
+			if templateName == "note" {
+				if len(parts) >= 2 {
+					return "\n:::note\n" + strings.TrimSpace(parts[1]) + "\n:::"
 				}
 			}
+			if templateName == "warning" || templateName == "внимание" {
+				if len(parts) >= 2 {
+					return "\n:::warning\n" + strings.TrimSpace(parts[1]) + "\n:::"
+				}
+			}
+			if templateName == "info" || templateName == "информация" {
+				if len(parts) >= 2 {
+					return "\n:::info\n" + strings.TrimSpace(parts[1]) + "\n:::"
+				}
+			}
+			if templateName == "tip" {
+				if len(parts) >= 2 {
+					return "\n:::tip\n" + strings.TrimSpace(parts[1]) + "\n:::"
+				}
+			}
+			if templateName == "caution" || templateName == "danger" {
+				if len(parts) >= 2 {
+					return "\n:::danger\n" + strings.TrimSpace(parts[1]) + "\n:::"
+				}
+			}
+
 			// For other templates, just return the content
-			return ""
+			return content
 		}
 		return ""
 	})
@@ -335,12 +370,8 @@ func (p *WikiParser) convertSimpleHTML(text string) string {
 
 func cleanLinkLabel(label string) string {
 	label = strings.TrimSpace(label)
-	label = strings.ReplaceAll(label, "|", "")
-	label = strings.ReplaceAll(label, ">", "")
-	label = strings.ReplaceAll(label, "<", "")
-	label = strings.ReplaceAll(label, "-", "")
-	label = strings.ReplaceAll(label, "/", "")
-	label = strings.TrimSpace(label)
+	label = strings.ReplaceAll(label, ">", "&#62;")
+	label = strings.ReplaceAll(label, "<", "&#60;")
 
 	return label
 }
@@ -842,7 +873,7 @@ func (p *WikiParser) convertAssets(text string) string {
 		// Collect image filenames
 		p.assets = append(p.assets, filename)
 
-		assetURL := p.generateAssetURL(filename)
+		assetURL := generateAssetURL(filename, p.imageBaseURL, p.fileBaseURL)
 
 		if isImageAsset(filename) {
 			// Return markdown image syntax, optionally wrapped in a link.
@@ -889,15 +920,6 @@ func (p *WikiParser) isImageOption(s string) bool {
 	return false
 }
 
-// generateAssetURL generates the URL for an asset based on its type
-func (p *WikiParser) generateAssetURL(filename string) string {
-	if isImageAsset(filename) {
-		return strings.TrimRight(p.imageBaseURL, "/") + "/" + filename
-	}
-
-	return strings.TrimRight(p.fileBaseURL, "/") + "/" + filename
-}
-
 // assetsUnique returns a unique set of all assets found during parsing
 func (p *WikiParser) assetsUnique() map[string]struct{} {
 	m := make(map[string]struct{})
@@ -910,110 +932,36 @@ func (p *WikiParser) assetsUnique() map[string]struct{} {
 
 // convertInternalLink converts a MediaWiki internal link to a relative path
 func (p *WikiParser) convertInternalLinkTarget(target string) string {
-	target = strings.TrimSpace(target)
-
-	// Handle anchors (sections within pages)
-	// Example: [[Article#Section]] -> article#section
-	var anchor string
-	if strings.Contains(target, "#") {
-		parts := strings.SplitN(target, "#", 2)
-		target = parts[0]
-		anchor = "#" + strings.ToLower(strings.ReplaceAll(parts[1], " ", "-"))
-	}
-
-	// Handle namespace prefixes
-	// Example: [[Help:Getting Started]] -> /help/getting-started
-	var prefix string
-	if strings.Contains(target, ":") {
-		parts := strings.SplitN(target, ":", 2)
-		namespace := strings.ToLower(parts[0])
-		target = parts[1]
-		target = strings.Trim(target, ":")
-
-		// Map common namespaces to paths
-		switch namespace {
-		case "file", "image":
-			filename := normalizeAssetName(target)
-			if filename == "" {
-				return ""
-			}
-			if isImageAsset(filename) {
-				return strings.TrimRight(p.imageBaseURL, "/") + "/" + filename + anchor
-			}
-			return strings.TrimRight(p.fileBaseURL, "/") + "/" + filename + anchor
-		default:
-			// Unknown namespace, keep as-is
-			prefix = namespace + "/"
-		}
-	}
-
-	// Convert to slug format
-	slug := strings.ToLower(target)
-	// Transliterate Cyrillic to Latin
-	slug = transliterateCyrillic(slug)
-	slug = strings.ReplaceAll(slug, " ", "-")
-	slug = strings.ReplaceAll(slug, "_", "-")
-	slug = strings.ReplaceAll(slug, "/", "-")
-	slug = strings.ReplaceAll(slug, ":", "-")
-	slug = strings.ReplaceAll(slug, ".", "-")
-	slug = strings.ReplaceAll(slug, "--", "-")
-	slug = strings.TrimSpace(slug)
-	slug = strings.Trim(slug, "-")
-
-	// Remove special characters except hyphens
-	slug = strings.Map(func(r rune) rune {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
-			return r
-		}
-		return -1
-	}, slug)
-
-	// Remove multiple consecutive hyphens
-	for strings.Contains(slug, "--") {
-		slug = strings.ReplaceAll(slug, "--", "-")
-	}
-
-	// Trim hyphens from start and end
-	slug = strings.Trim(slug, "-")
-
-	// Build final link
-	if prefix != "" {
-		return prefix + slug + anchor
-	}
-	return slug + anchor
-}
-
-// isImageAsset checks if a file is an image based on its extension
-func isImageAsset(filename string) bool {
-	switch strings.ToLower(filepath.Ext(strings.TrimSpace(filename))) {
-	case ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp", ".tif", ".tiff", ".ico", ".avif":
-		return true
-	default:
-		return false
-	}
-}
-
-// normalizeAssetName normalizes an asset filename to match MediaWiki conventions
-func normalizeAssetName(name string) string {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return ""
-	}
-
-	// Replace problematic characters with underscores
-	name = strings.ReplaceAll(name, " ", "_")
-	name = strings.ReplaceAll(name, "/", "_")
-	name = strings.ReplaceAll(name, "\\", "_")
-	name = strings.ReplaceAll(name, "\u200e", "")
-	runes := []rune(name)
-	// Capitalize the first rune
-	runes[0] = unicode.ToUpper(runes[0])
-
-	return string(runes)
+	return ConvertInternalLink(target, "", p.imageBaseURL, p.fileBaseURL, 0)
 }
 
 // wrapMultiLineCode wraps content in a code fence with optional language
 func wrapMultiLineCode(content string, lang string) string {
 	content = strings.TrimSpace(content)
 	return fmt.Sprintf("\n```%s\n%s\n```\n", lang, content)
+}
+
+// convertMagicWords converts MediaWiki magic words to appropriate MDX equivalents
+func (p *WikiParser) convertMagicWords(text string) string {
+	// Remove TOC magic words (Docusaurus handles TOC automatically)
+	text = strings.ReplaceAll(text, "__TOC__", "")
+	text = strings.ReplaceAll(text, "__NOTOC__", "")
+	text = strings.ReplaceAll(text, "__FORCETOC__", "")
+
+	// Remove other common magic words
+	text = strings.ReplaceAll(text, "__NOEDITSECTION__", "")
+	text = strings.ReplaceAll(text, "__NOTITLECONVERT__", "")
+	text = strings.ReplaceAll(text, "__NOGALLERY__", "")
+	text = strings.ReplaceAll(text, "__NOCONTENTCONVERT__", "")
+	text = strings.ReplaceAll(text, "__NOTC__", "")
+	text = strings.ReplaceAll(text, "__NOCC__", "")
+	text = strings.ReplaceAll(text, "__NEWSECTIONLINK__", "")
+	text = strings.ReplaceAll(text, "__NONEWSECTIONLINK__", "")
+	text = strings.ReplaceAll(text, "__HIDDENCAT__", "")
+	text = strings.ReplaceAll(text, "__INDEX__", "")
+	text = strings.ReplaceAll(text, "__NOINDEX__", "")
+	text = strings.ReplaceAll(text, "__STATICREDIRECT__", "")
+	text = strings.ReplaceAll(text, "__DISAMBIG__", "")
+
+	return text
 }

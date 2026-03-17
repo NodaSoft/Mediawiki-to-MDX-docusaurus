@@ -10,6 +10,7 @@ A Go-based tool to convert MediaWiki content to MDX format for use with Docusaur
 - 🔧 Configurable via command-line flags or environment variables
 - 📊 Detailed conversion statistics
 - 🚀 Direct database access for efficient conversion
+- 🔀 **URL Redirecter** - Redirect old MediaWiki URLs to new Docusaurus URLs
 
 ## Prerequisites
 
@@ -24,7 +25,12 @@ A Go-based tool to convert MediaWiki content to MDX format for use with Docusaur
 ```bash
 git clone https://github.com/nodasoft/Mediawiki-to-MDX-docusaurus.git
 cd Mediawiki-to-MDX-docusaurus
-go build -o bin/wikiToMdx ./cmd
+
+# Build the converter
+go build -o bin/wikiToMdx ./cmd/converter
+
+# Build the redirecter
+go build -o bin/redirect ./cmd/redirect
 ```
 
 ### Using Make
@@ -38,7 +44,7 @@ make build
 ### Basic Usage
 
 ```bash
-./bin/wikiToMdx \
+./wikiToMdx \
   -db-host localhost \
   -db-port 3306 \
   -db-user root \
@@ -50,7 +56,7 @@ make build
 ### With Asset Download
 
 ```bash
-./bin/wikiToMdx \
+./wikiToMdx \
   -db-host localhost \
   -db-pass your_password \
   -db-name mediawiki \
@@ -121,7 +127,12 @@ make install-linter
 ```
 .
 ├── cmd/
-│   └── main.go              # Main entry point
+│   ├── converter/           # Converter tool
+│   │   └── main.go
+│   └── redirect/            # Redirecter tool
+│       ├── main.go
+│       ├── README.md
+│       └── redirects.example.yaml
 ├── internal/
 │   └── wikiconverter/       # Core conversion logic
 │       ├── converter.go     # Main converter
@@ -129,21 +140,52 @@ make install-linter
 │       ├── formatter.go     # MDX formatter
 │       ├── downloader.go    # Asset downloader
 │       ├── wikireader.go    # Database reader
+│       ├── helpers.go       # Helper functions
 │       └── table_parser.go  # Table parser
-├── bin/                     # Compiled binaries
 ├── Makefile                 # Build and lint commands
 ├── go.mod                   # Go module definition
 └── README.md               # This file
 ```
 
+## URL Redirecter
+
+After converting your MediaWiki content to Docusaurus, you'll want to redirect old URLs to the new ones. The included redirecter tool helps with this:
+
+### Generate Redirect Map
+
+```bash
+./redirect generate \
+  -db-pass your_password \
+  -new-base-url https://newdocs.example.com/docs \
+  -output redirects.yaml
+```
+
+### Run Redirect Server
+
+Deploy this on your old MediaWiki domain to redirect traffic:
+
+```bash
+./redirect serve \
+  -map redirects.yaml \
+  -port 80 \
+  -new-base-url https://newdocs.example.com
+```
+
+For detailed documentation, see [cmd/redirect/README.md](cmd/redirect/README.md).
+
 ## Output
 
-The tool generates:
+The converter generates:
 
 - **MDX files**: One file per MediaWiki article in the output directory
 - **Images**: Downloaded to the images directory (if `-download-assets` is enabled)
 - **Files**: Downloaded to the files directory (if `-download-assets` is enabled)
 - **Statistics**: Summary of conversion results
+
+The redirecter generates:
+
+- **YAML redirect map**: Mapping of old URLs to new URLs
+- **HTTP redirect server**: 301 redirects for old MediaWiki URLs
 
 ### Example Output
 
@@ -195,10 +237,31 @@ Common namespace IDs for filtering:
 - Check the MediaWiki database schema matches expectations
 - Verify the table prefix is correct if your MediaWiki uses one
 
+## Migration Workflow
+
+1. **Convert your MediaWiki content**:
+   ```bash
+   ./wikiToMdx -db-pass password -output ./docs -download-assets
+   ```
+
+2. **Generate redirect map**:
+   ```bash
+   ./redirect generate -db-pass password -new-base-url https://newdocs.example.com/docs
+   ```
+
+3. **Deploy your Docusaurus site** with the converted content
+
+4. **Deploy the redirect server** on your old MediaWiki domain:
+   ```bash
+   ./redirect serve -map redirects.yaml -new-base-url https://newdocs.example.com
+   ```
+
+5. **Update DNS** (optional) to point old domain to redirect server
+
 ## TODO
 
 - [ ] Read wiki articles by HTTP (API-based access as alternative to direct database connection)
-- [ ] Support redirect pages
+- [x] Support redirect pages (implemented in redirecter tool)
 - [ ] Tests for edge cases and error handling
 - [ ] Interfaces for better extensibility
 

@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/nodasoft/Mediawiki-to-MDX-docusaurus/internal/wikiconverter"
+	"github.com/nodasoft/Mediawiki-to-MDX-docusaurus/internal/wikireader"
 )
 
 func envOrDefault(envKey, fallback string) string {
@@ -55,26 +56,29 @@ func main() {
 	}
 
 	// Create converter configuration
-	config := wikiconverter.Config{
-		DBHost:         *dbHost,
-		DBPort:         *dbPort,
-		DBUser:         *dbUser,
-		DBPass:         *dbPass,
-		DBName:         *dbName,
-		TablePrefix:    *tablePrefix,
+	cfg := wikiconverter.Config{
+		DBConfig: wikireader.DBConfig{
+			DBHost:      *dbHost,
+			DBPort:      *dbPort,
+			DBUser:      *dbUser,
+			DBPass:      *dbPass,
+			DBName:      *dbName,
+			TablePrefix: *tablePrefix,
+			Verbose:     *verbose,
+		},
+		Verbose:        *verbose,
 		OutputDir:      *outputDir,
-		ImageAssetsDir: *imagesDir,
-		FileAssetsDir:  *filesDir,
 		Namespace:      *namespace,
 		AssetBaseURL:   *assetBaseURL,
-		DownloadAssets: *downloadAssets,
-		Verbose:        *verbose,
 		ImageAssetsURL: *imageAssetsURL,
 		FileAssetsURL:  *fileAssetsURL,
+		DownloadAssets: *downloadAssets,
+		ImageAssetsDir: *imagesDir,
+		FileAssetsDir:  *filesDir,
 	}
 
 	// Create converter
-	converter, err := wikiconverter.NewConverter(config)
+	converter, err := wikiconverter.NewConverter(cfg)
 	if err != nil {
 		log.Fatalf("Failed to create converter: %v", err)
 	}
@@ -104,12 +108,6 @@ func main() {
 		fmt.Printf("Files directory: %s\n", *filesDir)
 	}
 	fmt.Printf("Output directory: %s\n", *outputDir)
-
-	if *assetBaseURL != "" {
-		fmt.Printf("Image base URL: %s\n", *assetBaseURL)
-	} else {
-		fmt.Println("Images will use relative path: /img/")
-	}
 
 	if stats.Failed > 0 {
 		os.Exit(1)
