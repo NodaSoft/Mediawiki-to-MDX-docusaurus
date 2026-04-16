@@ -94,13 +94,13 @@ func (h *RedirectHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Track successful redirect metrics
-	statusCode := http.StatusMovedPermanently
+	statusCode := http.StatusFound
 	h.metrics.RedirectsTotal.WithLabelValues(redirectType).Inc()
 	h.metrics.RequestsTotal.WithLabelValues(r.Method, requestPath, strconv.Itoa(statusCode)).Inc()
 	h.metrics.RequestDuration.WithLabelValues(r.Method, requestPath, strconv.Itoa(statusCode)).Observe(time.Since(startTime).Seconds())
 
-	// Perform 301 permanent redirect
-	http.Redirect(w, r, targetURL, http.StatusMovedPermanently)
+	// Perform 302 temporary redirect
+	http.Redirect(w, r, targetURL, http.StatusFound)
 }
 
 func (h *RedirectHandler) findRedirect(pageName string) (string, bool, string) {
