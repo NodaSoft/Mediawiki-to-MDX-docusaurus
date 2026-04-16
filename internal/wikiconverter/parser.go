@@ -151,6 +151,9 @@ func (p *WikiParser) Parse(wikitext string) string {
 	// Convert json
 	text = p.convertJSON(text)
 
+	// Convert leading space code blocks (must be done before lists)
+	text = p.convertLeadingSpaceCodeBlocks(text)
+
 	text = p.convertFontTags(text)
 	text = p.convertHTMLStylesToMDX(text)
 	text = p.codeifyNonHTMLTags(text)
@@ -1007,4 +1010,55 @@ func (p *WikiParser) convertMagicWords(text string) string {
 	text = strings.ReplaceAll(text, "__DISAMBIG__", "")
 
 	return text
+}
+
+// convertLeadingSpaceCodeBlocks converts MediaWiki leading space syntax to Markdown code blocks
+// In MediaWiki, lines starting with a space are treated as preformatted text (<pre> tags)
+func (p *WikiParser) convertLeadingSpaceCodeBlocks(text string) string {
+	lines := strings.Split(text, "\n")
+	var result []string
+	var codeBlock []string
+	inCodeBlock := false
+	inOtherBlock := false
+
+	for _, line := range lines {
+		if len(line) >= 3 && line[0] == '`' && line[1] == '`' && line[2] == '`' {
+			inOtherBlock = !inOtherBlock
+			result = append(result, line)
+			continue
+		}
+		// Check if line starts with a space (but not multiple spaces that might be indentation)
+		if len(line) > 0 && line[0] == ' ' && !inOtherBlock {
+			trimmedLine := strings.TrimSpace(line)
+			if trimmedLine == "" { // Empty line
+				result = append(result, line)
+				continue
+			}
+			if trimmedLine[0] == '-' { // List item
+				result = append(result, line)
+				continue
+			}
+			// This is a code line - remove the leading space and add to block
+			inCodeBlock = true
+			codeBlock = append(codeBlock, line[1:]) // Remove the leading space
+		} else { // Not a code line
+			if inCodeBlock {
+				result = append(result, "```")
+				result = append(result, codeBlock...)
+				result = append(result, "```")
+				codeBlock = nil
+				inCodeBlock = false
+			}
+			result = append(result, line)
+		}
+	}
+
+	// Handle any remaining code block at the end
+	if inCodeBlock && len(codeBlock) > 0 {
+		result = append(result, "```")
+		result = append(result, codeBlock...)
+		result = append(result, "```")
+	}
+
+	return strings.Join(result, "\n")
 }
