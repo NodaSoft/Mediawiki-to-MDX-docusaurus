@@ -12,14 +12,16 @@ import (
 // RedirectHandler handles HTTP redirects
 type RedirectHandler struct {
 	redirectMap *Map
+	oldBasePath string
 	newBaseURL  string
 	verbose     bool
 	metrics     *Metrics
 }
 
-func NewRedirectHandler(redirectMap *Map, newBaseURL string, verbose bool, metrics *Metrics) *RedirectHandler {
+func NewRedirectHandler(redirectMap *Map, oldBasePath, newBaseURL string, verbose bool, metrics *Metrics) *RedirectHandler {
 	return &RedirectHandler{
 		redirectMap: redirectMap,
+		oldBasePath: oldBasePath,
 		newBaseURL:  newBaseURL,
 		verbose:     verbose,
 		metrics:     metrics,
@@ -37,6 +39,10 @@ func (h *RedirectHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Parse the request URL
 	requestPath := r.URL.Path
 	queryParams := r.URL.Query()
+
+	if h.oldBasePath != "" && strings.HasPrefix(requestPath, h.oldBasePath) {
+		requestPath = strings.TrimPrefix(requestPath, h.oldBasePath)
+	}
 
 	// Try to find redirect target
 	var targetURL string

@@ -42,6 +42,7 @@ func main() {
 	// Serve command flags
 	serveMapFile := serveCmd.String("map", envOrDefault("REDIRECT_MAP_FILE", defaultFile), "YAML file with redirect mappings")
 	servePort := serveCmd.String("port", envOrDefault("PORT", defaultPort), "Port to listen on")
+	oldBasePath := serveCmd.String("old-base-path", envOrDefault("OLD_BASE_PATH", "/old"), "Base path for old site")
 	serveBaseURL := serveCmd.String("base-url", envOrDefault("NEW_BASE_URL", "https://docs.example.com"), "Full base URL for new site")
 	serveVerbose := serveCmd.Bool("verbose", envBoolOrDefault("VERBOSE", false), "Verbose logging")
 
@@ -83,7 +84,7 @@ func main() {
 		if err := serveCmd.Parse(os.Args[2:]); err != nil {
 			log.Fatalf("Failed to parse serve flags: %v", err)
 		}
-		if err := runServe(*serveMapFile, *servePort, *serveBaseURL, *serveVerbose); err != nil {
+		if err := runServe(*serveMapFile, *servePort, *oldBasePath, *serveBaseURL, *serveVerbose); err != nil {
 			log.Fatalf("Serve failed: %v", err)
 		}
 
@@ -114,12 +115,13 @@ func printUsage() {
 	fmt.Println("\nServe flags:")
 	fmt.Println("  -map string            YAML file with redirect mappings (default: redirects.yaml)")
 	fmt.Println("  -port string           Port to listen on (default: 8080)")
+	fmt.Println("  -old-base-path string  Base path for old site (default: /old)")
 	fmt.Println("  -base-url string       Full base URL for new site (default: https://docs.example.com)")
 	fmt.Println("  -verbose               Verbose logging")
 	fmt.Println("\nEnvironment variables:")
 	fmt.Println("  WIKI_DB_HOST, WIKI_DB_PORT, WIKI_DB_USER, WIKI_DB_PASS, WIKI_DB_NAME")
 	fmt.Println("  WIKI_TABLE_PREFIX, REDIRECT_MAP_FILE, PAGE_BASE_URL, IMAGE_BASE_URL")
-	fmt.Println("  FILE_BASE_URL, NAMESPACE, NEW_BASE_URL, PORT, VERBOSE")
+	fmt.Println("  FILE_BASE_URL, NAMESPACE, NEW_BASE_URL, OLD_BASE_PATH, PORT, VERBOSE")
 }
 
 func runGenerate(config redirect.Config) error {
@@ -130,7 +132,7 @@ func runGenerate(config redirect.Config) error {
 	return nil
 }
 
-func runServe(mapFile, port string, baseURL string, verbose bool) error {
+func runServe(mapFile, port string, oldBasePath, baseURL string, verbose bool) error {
 	fmt.Printf("Starting redirect server on port %s...\n", port)
 
 	// Load redirect map
@@ -145,7 +147,7 @@ func runServe(mapFile, port string, baseURL string, verbose bool) error {
 	metrics := redirect.NewMetrics()
 
 	// Create redirect handler
-	handler := redirect.NewRedirectHandler(redirectMap, baseURL, verbose, metrics)
+	handler := redirect.NewRedirectHandler(redirectMap, oldBasePath, baseURL, verbose, metrics)
 
 	// Setup HTTP server
 	http.HandleFunc("/", handler.ServeHTTP)
