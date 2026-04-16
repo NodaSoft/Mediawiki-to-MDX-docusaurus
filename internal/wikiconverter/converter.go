@@ -97,7 +97,7 @@ func (c *Converter) Convert() (*Stats, error) {
 
 	// Convert each page
 	for i, page := range pages {
-		//if strings.HasSuffix(page.Title, "EN") || strings.HasSuffix(page.Title, "en") {
+		//if strings.HasSuffix(strings.ToLower(page.Title), "en") && !strings.HasPrefix(strings.ToLower(page.Title), "option") {
 		//	continue
 		//}
 		if c.config.Verbose {
