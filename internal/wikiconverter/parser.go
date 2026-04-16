@@ -458,19 +458,62 @@ func (p *WikiParser) resolveRedirect(pageName string) string {
 // codeifyNonHTMLTags wraps non-HTML tags in inline code blocks
 // This prevents MDX from trying to parse custom wiki tags as JSX
 func (p *WikiParser) codeifyNonHTMLTags(text string) string {
-	return p.patterns["nonHTMLTags"].ReplaceAllStringFunc(text, func(match string) string {
-		parts := p.patterns["nonHTMLTags"].FindStringSubmatch(match)
-		if len(parts) != 4 {
-			return match
+	// Split text into segments, tracking whether each segment is inside a code block
+	var result strings.Builder
+	inCodeBlock := false
+	i := 0
+
+	for i < len(text) {
+		// Check for code block delimiter (```)
+		if i+2 < len(text) && text[i] == '`' && text[i+1] == '`' && text[i+2] == '`' {
+			// Find the end of the delimiter (could be more than 3 backticks)
+			j := i
+			for j < len(text) && text[j] == '`' {
+				j++
+			}
+			// Write the delimiter as-is
+			result.WriteString(text[i:j])
+			i = j
+			inCodeBlock = !inCodeBlock
+			continue
 		}
 
-		tagName := strings.ToLower(parts[2])
-		if _, ok := htmlTagNames[tagName]; ok {
-			return match
+		// If we're in a code block, just copy the character
+		if inCodeBlock {
+			result.WriteByte(text[i])
+			i++
+			continue
 		}
 
-		return wrapInlineCode(match)
-	})
+		// Outside code block - check for non-HTML tags
+		match := p.patterns["nonHTMLTags"].FindStringIndex(text[i:])
+		if match == nil || match[0] != 0 {
+			// No match at current position, copy character
+			result.WriteByte(text[i])
+			i++
+			continue
+		}
+
+		// Found a potential non-HTML tag
+		matchText := text[i : i+match[1]]
+		parts := p.patterns["nonHTMLTags"].FindStringSubmatch(matchText)
+
+		if len(parts) == 4 {
+			tagName := strings.ToLower(parts[2])
+			if _, ok := htmlTagNames[tagName]; !ok {
+				// Non-HTML tag - wrap it in code
+				result.WriteString(wrapInlineCode(matchText))
+				i += match[1]
+				continue
+			}
+		}
+
+		// HTML tag or invalid match - keep as-is
+		result.WriteString(matchText)
+		i += match[1]
+	}
+
+	return result.String()
 }
 
 // wrapInlineCode wraps content in backticks, using enough backticks to avoid conflicts
