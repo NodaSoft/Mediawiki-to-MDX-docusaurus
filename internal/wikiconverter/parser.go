@@ -325,27 +325,27 @@ func (p *WikiParser) convertSimpleHTML(text string) string {
 			// Handle admonition templates
 			if templateName == "note" {
 				if len(parts) >= 2 {
-					return "\n:::note\n" + strings.TrimSpace(parts[1]) + "\n:::"
+					return "\n:::note\n" + strings.TrimSpace(parts[1]) + "\n:::\n"
 				}
 			}
 			if templateName == "warning" || templateName == "внимание" {
 				if len(parts) >= 2 {
-					return "\n:::warning\n" + strings.TrimSpace(parts[1]) + "\n:::"
+					return "\n:::warning\n" + strings.TrimSpace(parts[1]) + "\n:::\n"
 				}
 			}
 			if templateName == "info" || templateName == "информация" {
 				if len(parts) >= 2 {
-					return "\n:::info\n" + strings.TrimSpace(parts[1]) + "\n:::"
+					return "\n:::info\n" + strings.TrimSpace(parts[1]) + "\n:::\n"
 				}
 			}
 			if templateName == "tip" {
 				if len(parts) >= 2 {
-					return "\n:::tip\n" + strings.TrimSpace(parts[1]) + "\n:::"
+					return "\n:::tip\n" + strings.TrimSpace(parts[1]) + "\n:::\n"
 				}
 			}
 			if templateName == "caution" || templateName == "danger" {
 				if len(parts) >= 2 {
-					return "\n:::danger\n" + strings.TrimSpace(parts[1]) + "\n:::"
+					return "\n:::danger\n" + strings.TrimSpace(parts[1]) + "\n:::\n"
 				}
 			}
 
