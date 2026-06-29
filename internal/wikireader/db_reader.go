@@ -6,6 +6,8 @@ import (
 	"log"
 	"regexp"
 	"strings"
+
+	"github.com/nodasoft/Mediawiki-to-MDX-docusaurus/wikiconverter"
 )
 
 // WikiDBReader reads pages from a MediaWiki database
@@ -64,7 +66,7 @@ func (r *WikiDBReader) tableName(name string) string {
 }
 
 // FetchPages retrieves pages from MediaWiki database
-func (r *WikiDBReader) FetchPages() ([]WikiPage, error) {
+func (r *WikiDBReader) FetchPages() ([]wikiconverter.WikiPage, error) {
 	query := `
 		SELECT
 			p.page_id,
@@ -99,9 +101,9 @@ func (r *WikiDBReader) FetchPages() ([]WikiPage, error) {
 		_ = rows.Close()
 	}()
 
-	var pages []WikiPage
+	var pages []wikiconverter.WikiPage
 	for rows.Next() {
-		var page WikiPage
+		var page wikiconverter.WikiPage
 		var isRedirect int
 		err := rows.Scan(
 			&page.ID,

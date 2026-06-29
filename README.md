@@ -133,15 +133,18 @@ make install-linter
 │       ├── main.go
 │       ├── README.md
 │       └── redirects.example.yaml
+├── docusaurus/              # Docusaurus-specific MDX formatting
+│   └── formatter.go
 ├── internal/
-│   └── wikiconverter/       # Core conversion logic
-│       ├── converter.go     # Main converter
-│       ├── parser.go        # Wiki markup parser
-│       ├── formatter.go     # MDX formatter
-│       ├── downloader.go    # Asset downloader
-│       ├── wikireader.go    # Database reader
-│       ├── helpers.go       # Helper functions
-│       └── table_parser.go  # Table parser
+│   └── wikireader/          # Database reader
+│       ├── db_reader.go
+│       └── wikireader.go
+├── wikiconverter/           # Core wiki conversion logic
+│   ├── converter.go         # Main converter
+│   ├── parser.go            # Wiki markup parser
+│   ├── downloader.go        # Asset downloader
+│   ├── helpers.go           # Helper functions
+│   └── table_parser.go      # Table parser
 ├── Makefile                 # Build and lint commands
 ├── go.mod                   # Go module definition
 └── README.md               # This file

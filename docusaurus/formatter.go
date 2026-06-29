@@ -1,11 +1,11 @@
-package wikiconverter
+package docusaurus
 
 import (
 	"fmt"
 	"strings"
 )
 
-// DocusaurusDoc represents a Docusaurus document
+// DocusaurusDoc represents a Docusaurus document.
 type DocusaurusDoc struct {
 	Title       string
 	ID          string
@@ -15,19 +15,18 @@ type DocusaurusDoc struct {
 	Content     string
 }
 
-// DocusaurusFormatter formats documents for Docusaurus
+// DocusaurusFormatter formats documents for Docusaurus.
 type DocusaurusFormatter struct{}
 
-// NewDocusaurusFormatter creates a new formatter
+// NewDocusaurusFormatter creates a new formatter.
 func NewDocusaurusFormatter() *DocusaurusFormatter {
 	return &DocusaurusFormatter{}
 }
 
-// Format converts a document to Docusaurus MDX format
+// Format converts a document to Docusaurus MDX format.
 func (f *DocusaurusFormatter) Format(doc DocusaurusDoc) string {
 	var sb strings.Builder
 
-	// Write frontmatter
 	sb.WriteString("---\n")
 	sb.WriteString(fmt.Sprintf("id: %s\n", doc.ID))
 	sb.WriteString(fmt.Sprintf("title: %s\n", f.escapeYAML(doc.Title)))
@@ -48,21 +47,17 @@ func (f *DocusaurusFormatter) Format(doc DocusaurusDoc) string {
 	}
 
 	sb.WriteString("---\n\n")
-
-	// Write content
 	sb.WriteString(doc.Content)
 	sb.WriteString("\n")
 
 	return sb.String()
 }
 
-// escapeYAML escapes special characters in YAML strings
 func (f *DocusaurusFormatter) escapeYAML(s string) string {
-	// If string contains special characters, quote it
 	if strings.ContainsAny(s, ":#[]{}|>\"'") || strings.Contains(s, "\n") {
-		// Escape quotes
 		s = strings.ReplaceAll(s, "\"", "\\\"")
 		return "\"" + s + "\""
 	}
+
 	return s
 }

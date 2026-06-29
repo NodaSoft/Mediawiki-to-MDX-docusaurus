@@ -1,10 +1,7 @@
 package wikiconverter
 
-import "github.com/nodasoft/Mediawiki-to-MDX-docusaurus/internal/wikireader"
-
 // Config holds the converter configuration
 type Config struct {
-	wikireader.DBConfig
 	OutputDir      string // Output directory for generated Docusaurus mdx-files
 	Namespace      string
 	Verbose        bool

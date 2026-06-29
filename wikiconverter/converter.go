@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/nodasoft/Mediawiki-to-MDX-docusaurus/internal/wikireader"
+	"github.com/nodasoft/Mediawiki-to-MDX-docusaurus/docusaurus"
 )
 
 const (
@@ -23,10 +23,10 @@ const (
 
 // Converter handles the conversion process
 type Converter struct {
-	reader     wikireader.WikiReader
+	reader     WikiReader
 	config     Config
 	parser     *WikiParser
-	formatter  *DocusaurusFormatter
+	formatter  *docusaurus.DocusaurusFormatter
 	downloader *Downloader
 }
 
@@ -48,18 +48,12 @@ type Stats struct {
 }
 
 // NewConverter creates a new converter instance
-func NewConverter(cfg Config) (*Converter, error) {
-	dbConfig := cfg.DBConfig
-	reader, err := wikireader.NewWikiDBReader(dbConfig, cfg.Namespace)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create WikiReader: %w", err)
-	}
-
+func NewConverter(cfg Config, reader WikiReader) (*Converter, error) {
 	return &Converter{
 		reader:     reader,
 		config:     cfg,
 		parser:     NewWikiParserWithImageURL(cfg.ImageAssetsURL, cfg.FileAssetsURL),
-		formatter:  NewDocusaurusFormatter(),
+		formatter:  docusaurus.NewDocusaurusFormatter(),
 		downloader: NewDownloader(cfg),
 	}, nil
 }
@@ -136,7 +130,7 @@ func (c *Converter) Convert() (*Stats, error) {
 }
 
 // collectRedirects collects page redirects from a list of WikiPages
-func (c *Converter) collectRedirects(pages []wikireader.WikiPage) []Redirect {
+func (c *Converter) collectRedirects(pages []WikiPage) []Redirect {
 	var redirects []Redirect
 	for _, page := range pages {
 		if page.IsRedirect {
@@ -161,12 +155,12 @@ func (c *Converter) collectRedirects(pages []wikireader.WikiPage) []Redirect {
 }
 
 // convertPage converts a single page to Docusaurus format
-func (c *Converter) convertPage(page wikireader.WikiPage) string {
+func (c *Converter) convertPage(page WikiPage) string {
 	// Parse wiki markup to markdown
 	markdown := c.parser.Parse(page.Content)
 
 	// Create Docusaurus document
-	doc := DocusaurusDoc{
+	doc := docusaurus.DocusaurusDoc{
 		Title:       page.Title,
 		ID:          generateIDByTitle(page.Title),
 		Description: c.extractDescription(markdown),
@@ -180,7 +174,7 @@ func (c *Converter) convertPage(page wikireader.WikiPage) string {
 	return mdxContent
 }
 
-func (c *Converter) savePage(page wikireader.WikiPage, mdxContent string) error {
+func (c *Converter) savePage(page WikiPage, mdxContent string) error {
 	// Generate filename
 	filename := c.generateFilename(page.Title, page.Namespace)
 	fullPath := filepath.Join(c.config.OutputDir, filename)

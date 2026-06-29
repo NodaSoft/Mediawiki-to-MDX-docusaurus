@@ -7,8 +7,8 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/nodasoft/Mediawiki-to-MDX-docusaurus/internal/wikiconverter"
 	"github.com/nodasoft/Mediawiki-to-MDX-docusaurus/internal/wikireader"
+	"github.com/nodasoft/Mediawiki-to-MDX-docusaurus/wikiconverter"
 )
 
 func envOrDefault(envKey, fallback string) string {
@@ -57,15 +57,6 @@ func main() {
 
 	// Create converter configuration
 	cfg := wikiconverter.Config{
-		DBConfig: wikireader.DBConfig{
-			DBHost:      *dbHost,
-			DBPort:      *dbPort,
-			DBUser:      *dbUser,
-			DBPass:      *dbPass,
-			DBName:      *dbName,
-			TablePrefix: *tablePrefix,
-			Verbose:     *verbose,
-		},
 		Verbose:        *verbose,
 		OutputDir:      *outputDir,
 		Namespace:      *namespace,
@@ -77,8 +68,21 @@ func main() {
 		FileAssetsDir:  *filesDir,
 	}
 
+	dbConfig := wikireader.DBConfig{
+		DBHost:      *dbHost,
+		DBPort:      *dbPort,
+		DBUser:      *dbUser,
+		DBPass:      *dbPass,
+		DBName:      *dbName,
+		TablePrefix: *tablePrefix,
+		Verbose:     *verbose,
+	}
+	reader, err := wikireader.NewWikiDBReader(dbConfig, cfg.Namespace)
+	if err != nil {
+		log.Fatalln(fmt.Sprintf("failed to create WikiReader: %w", err))
+	}
 	// Create converter
-	converter, err := wikiconverter.NewConverter(cfg)
+	converter, err := wikiconverter.NewConverter(cfg, reader)
 	if err != nil {
 		log.Fatalf("Failed to create converter: %v", err)
 	}

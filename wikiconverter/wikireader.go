@@ -1,4 +1,4 @@
-package wikireader
+package wikiconverter
 
 // WikiPage represents a MediaWiki page
 type WikiPage struct {

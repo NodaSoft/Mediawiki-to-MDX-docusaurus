@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/nodasoft/Mediawiki-to-MDX-docusaurus/internal/wikiconverter"
 	"github.com/nodasoft/Mediawiki-to-MDX-docusaurus/internal/wikireader"
+	"github.com/nodasoft/Mediawiki-to-MDX-docusaurus/wikiconverter"
 	"gopkg.in/yaml.v3"
 )
 
